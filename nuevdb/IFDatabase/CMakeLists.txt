@@ -5,7 +5,7 @@ find_package(PostgreSQL REQUIRED)
 find_library( PQ NAMES pq PATHS ENV POSTGRESQL_LIBRARIES NO_DEFAULT_PATH )
 find_library( CURL NAMES curl )
 
-art_make_library( SOURCE Column.cpp  ColumnDef.cpp  Row.cpp  Table.cpp  Util.cpp
+art_make_library( SOURCE Column.cpp  ColumnDef.cpp  Row.cpp  Table.cpp  Util.cpp RunConditionsProtoDUNE.cpp
                      #${CMAKE_CURRENT_BINARY_DIR}/IFDatabaseCint.cc
                   LIBRARIES PRIVATE
                                 Boost::date_time
@@ -15,6 +15,10 @@ art_make_library( SOURCE Column.cpp  ColumnDef.cpp  Row.cpp  Table.cpp  Util.cpp
                                 PQ
                                 ${CURL}
                  PUBLIC wda::wda
+                        cetlib_except::cetlib_except #Take this ones out ---
+			messagefacility::MF_MessageLogger
+			fhiclcpp::fhiclcpp
+                        ${FHICLCPP}
                  )
 
 cet_make_exec( NAME tagConditionsTableInDB
@@ -34,6 +38,12 @@ cet_make_exec( NAME dumpConditionsToCSV
                LIBRARIES PRIVATE nuevdb::IFDatabase
                          ${CURL}
                )
+cet_make_exec( NAME getRunConditionsProtoDUNE
+               SOURCE getRunConditionsProtoDUNE.cc
+               LIBRARIES PRIVATE nuevdb::IFDatabase
+                         ${CURL}
+               )
+
 
 cet_build_plugin( DBI art::service
                LIBRARIES PRIVATE
