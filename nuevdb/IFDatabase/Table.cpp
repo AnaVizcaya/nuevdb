@@ -1856,26 +1856,29 @@ namespace nutools {
         std::cerr << "Table::LoadUnstructuredConditionsTable: No validity time is set!" << std::endl;
         return false;
       }
-
       if (fUConDBURL == "") {
         std::cerr << "Table::LoadConditionsTable: Web Service URL is not set!" << std::endl;
         return false;
       }
-
       if (!Util::RunningOnGrid()) {
+        std::cout << "loading ucondbtable 1.3" << std::endl;
 	std::string interactiveURL = getenv("DBIUCONDBURLINT");
+        std::cout << "loading ucondbtable 1.2" <<interactiveURL<< std::endl;
 	if (!interactiveURL.empty())
+          {
 	  fUConDBURL = interactiveURL;
+          }
       }
 
       //      int ncol = this->NCol();
-
+      std::cout << "loading ucondbtable 2" << std::endl;
       std::stringstream myss;
 
       myss << fUConDBURL << "get?folder=" << Folder() << "." << Name() << "&";
-
-      
-      return false;
+      std::cout << "loading ucondbtable 1 " << std::endl;
+      Dataset ds; 
+     
+      return GetDataFromWebService(ds,myss.str());
     }
     
     //************************************************************
