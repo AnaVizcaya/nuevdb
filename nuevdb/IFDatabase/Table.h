@@ -69,6 +69,7 @@ namespace nutools {
       void SetTableName(std::string tname);
       void SetTableName(const char* tname);
       void SetFolderName(std::string folder);
+      void SetConDBUURL(std::string url); 
 
       void SetDataSource(std::string ds);
       void SetDataSource(int ids);
@@ -327,7 +328,6 @@ namespace nutools {
       bool LoadUnstructuredConditionsTable();
       bool LoadNonConditionsTable();
       bool GetDataFromWebService(Dataset&, std::string);
-      bool GetDataFromWebServiceForUcon(Dataset&, std::string);     
 
       void Reset();
       bool GetConnectionInfo(int ntry=0);
@@ -380,6 +380,7 @@ namespace nutools {
       std::string fValiditySQL;
       std::string fDetector;
       std::string fFolder;
+      std::string fConDBUURL;
       
       std::string fTag;
       std::string fWSURL;
