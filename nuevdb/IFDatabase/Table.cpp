@@ -537,6 +537,12 @@ namespace nutools {
     }
 
     //************************************************************
+    void Table::SetFolderName(std::string folder)
+    {
+      fFolder = folder;
+
+    }
+    //************************************************************
     void Table::SetDataSource(std::string ds) {
       if (ds == std::string("DAQ"))
 	this->SetDataSource(nutools::dbi::kDAQ);
@@ -1603,7 +1609,6 @@ namespace nutools {
 	std::cerr << "Table::Load(" << Name() << "): query took " 
 		  << tdiff.total_milliseconds() << " ms" << std::endl;
       }
-
       int httpStatus = getHTTPstatus(ds);
 
       if (httpStatus == 504) {
@@ -1660,11 +1665,10 @@ namespace nutools {
 
       if(fVerbosity > 0)
 	std::cout << "Got " << ntup-1 << " rows from database" << std::endl;
-
+      
       int ioff=fRow.size();
 
       AddEmptyRows(ntup);
-
       tu = getFirstTuple(ds);
       if (tu == NULL) {
 	std::cerr << "Table::Load(" << Name() << ") has NULL first tuple!"
@@ -1695,13 +1699,17 @@ namespace nutools {
 	    break;
 	  }
 	}
+
 	if (!foundMatch) // this means this field was unexpected, so
 	                 // ignore it downstream
+	{
 	  isKnownField[i] = false;
+        }
 	else
+        { 
 	  isKnownField[i] = true;	  
+	}
       }
-      
       releaseTuple(tu);
       tu = getNextTuple(ds);
       int irow=0;
@@ -1751,6 +1759,151 @@ namespace nutools {
       // gives the column names.
       while(int(fRow.size()) > irow) fRow.pop_back();
 	
+      releaseDataset(ds);
+
+      return true;
+    }
+
+    //************************************************************
+    bool Table::GetDataFromWebServiceForUcon(Dataset& ds, std::string myss)
+    {
+      Tuple tu;
+      char ss[1024];
+      //char ss2[1024];
+      int wda_err, err;
+      //std::vector<int> colMap(fCol.size());
+      //std::vector<bool> isString(fCol.size());
+      //std::vector<bool> isKnownField(fCol.size());
+
+      const char* uagent = NULL;
+
+      if(fVerbosity > 0)
+        std::cout << "DBWeb query: " << myss << std::endl;
+
+      boost::posix_time::ptime ctt1;
+      boost::posix_time::ptime ctt2;
+
+      if (fTimeQueries) {
+        ctt1 = boost::posix_time::microsec_clock::local_time();
+      }
+
+      ds = getDataWithTimeout(myss.c_str(), uagent,
+                              fConnectionTimeout, &wda_err);
+      std::cout << "this is the db output " << std::endl;
+      if (fTimeQueries) {
+        ctt2 = boost::posix_time::microsec_clock::local_time();
+        boost::posix_time::time_duration tdiff = ctt2 - ctt1;
+        std::cerr << "Table::Load(" << Name() << "): query took "
+                  << tdiff.total_milliseconds() << " ms" << std::endl;
+      }
+      int httpStatus = getHTTPstatus(ds);
+
+      if (httpStatus == 504) {
+        int nTry=0;
+        int sleepTime = 2;
+        time_t t0 = time(NULL);
+        time_t t1 = t0;
+
+        while (httpStatus == 504 && ((t1-t0) < fConnectionTimeout) ) {
+          sleepTime = 1 + ((double)random()/(double)RAND_MAX)*(1 << nTry++);
+
+          std::cerr << "Table::Load() for " << Name()
+                    << " failed with error 504, retrying in " << sleepTime
+                    << " seconds." << std::endl;
+
+          sleep(sleepTime);
+          t1 = time(NULL);
+          if (fTimeQueries)
+            ctt1 = boost::posix_time::microsec_clock::local_time();
+
+          ds = getDataWithTimeout(myss.c_str(), uagent,
+                                  fConnectionTimeout, &wda_err);
+
+          if (fTimeQueries) {
+            ctt2 = boost::posix_time::microsec_clock::local_time();
+            boost::posix_time::time_duration tdiff = ctt2 - ctt1;
+            std::cerr << "Table::Load(" << Name() << "): query took "
+                      << tdiff.total_milliseconds() << " ms" << std::endl;
+          }
+          httpStatus = getHTTPstatus(ds);
+        }
+      }
+
+      if (httpStatus != 200) {
+        std::cerr << "Table::Load: Web Service returned HTTP status "
+                  << httpStatus << ": " << getHTTPmessage(ds) << std::endl;
+        return false;
+      }
+
+      if (fTimeParsing)
+        ctt1 = boost::posix_time::microsec_clock::local_time();
+
+      int ntup = getNtuples(ds);
+
+      // Getting no rows back can be legitimate
+      if(ntup == 0){
+        if(fVerbosity > 0)
+          std::cout << "Got zero rows from database. Is that expected?" << std::endl;
+
+        fRow.clear();
+
+        return true;
+      }
+
+      if(fVerbosity > 0)
+        std::cout << "Got " << ntup-1 << " rows from database" << std::endl;
+
+      int ioff=fRow.size();
+
+      AddEmptyRows(ntup);
+      tu = getFirstTuple(ds);
+      if (tu == NULL) {
+        std::cerr << "Table::Load(" << Name() << ") has NULL first tuple!"
+                  << std::endl;
+        return false;
+      }
+
+      int ncol2 = getNfields(tu);
+      std::string chanStr = "channel";
+      std::string tvStr = "tv";
+      std::string tvEndStr = "tvend";
+      int chanIdx=-1;
+      int tvIdx=-1;
+      int tvEndIdx=-1;
+      for (int i=0; i<ncol2; ++i) 
+      {
+        getStringValue(tu,i,ss,sizeof(ss),&err);
+        if (chanStr == ss)  { chanIdx=i;  continue;}
+        if (tvStr == ss)    { tvIdx=i;    continue;}
+        if (tvEndStr == ss) { tvEndIdx=i; continue;}
+      }
+
+
+      releaseTuple(tu);
+      tu = getNextTuple(ds);
+      int irow=0;
+      while (tu != NULL) {
+        for (int i=0; i<ncol2; ++i) {
+          getStringValue(tu,i,ss,sizeof(ss),&err);
+          if (i == chanIdx) {
+            uint64_t chan = strtoull(ss,NULL,10);
+            fRow[ioff+irow].SetChannel(chan);
+            continue;
+          }
+          else if (i == tvIdx) {
+            double t1 = strtod(ss,NULL);
+            fRow[ioff+irow].SetVldTime(t1);
+          }
+          else if (i == tvEndIdx) {
+            double t1 = strtod(ss,NULL);
+            fRow[ioff+irow].SetVldTimeEnd(t1);
+          }
+        }
+        releaseTuple(tu);
+        tu = getNextTuple(ds);
+        ++irow;
+      };
+      std::cout << "what is this " << std::endl; 
       releaseDataset(ds);
 
       return true;
@@ -1856,26 +2009,33 @@ namespace nutools {
         std::cerr << "Table::LoadUnstructuredConditionsTable: No validity time is set!" << std::endl;
         return false;
       }
-      if (fUConDBURL == "") {
-        std::cerr << "Table::LoadConditionsTable: Web Service URL is not set!" << std::endl;
-        return false;
-      }
-      if (!Util::RunningOnGrid()) {
-        std::cout << "loading ucondbtable 1.3" << std::endl;
-	std::string interactiveURL = getenv("DBIUCONDBURLINT");
-        std::cout << "loading ucondbtable 1.2" <<interactiveURL<< std::endl;
-	if (!interactiveURL.empty())
-          {
-	  fUConDBURL = interactiveURL;
-          }
-      }
+      //if (fUConDBURL == "") {
+      //  std::cerr << "Table::LoadConditionsTable: Web Service URL is not set!" << std::endl;
+      //  return false;
+      // }
+      //if (!Util::RunningOnGrid()) {
+      //  std::string interactiveURL = getenv("DBIUCONDBURLINT");
+	//if (!interactiveURL.empty())
+         // {
+	 // fUConDBURL = interactiveURL;
+         // }
+      //}
 
       //      int ncol = this->NCol();
-      std::cout << "loading ucondbtable 2" << std::endl;
       std::stringstream myss;
 
       myss << fUConDBURL << "get?folder=" << Folder() << "." << Name() << "&";
-      std::cout << "loading ucondbtable 1 " << std::endl;
+
+      if (fTag != "") myss << "tag=" << fTag << "&";
+      if (fMinTSVld == fMaxTSVld) 
+      {
+        myss << "t=" << std::setprecision(12) << fMinTSVld;
+      }
+      else 
+      {
+        myss << "t0=" << std::setprecision(12) << fMinTSVld << "&t1=" << std::setprecision(12) << fMaxTSVld;
+      }
+      
       Dataset ds; 
      
       return GetDataFromWebService(ds,myss.str());
